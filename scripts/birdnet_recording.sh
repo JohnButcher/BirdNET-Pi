@@ -8,7 +8,11 @@ if [ ! -z $RTSP_STREAM ];then
   [ -d $RECS_DIR/StreamData ] || mkdir -p $RECS_DIR/StreamData
   while true;do
     for i in ${RTSP_STREAM//,/ };do
-      ffmpeg -i  ${i} -t ${RECORDING_LENGTH} -vn -acodec pcm_s16le -ac 2 -ar 48000 file:${RECS_DIR}/StreamData/$(date "+%F")-birdnet-$(date "+%H:%M:%S").wav
+      ffmpeg -i  ${i} -t ${RECORDING_LENGTH} -vn -acodec pcm_s16le -ac 2 -ar 48000 file:${RECS_DIR}/StreamData/$(date "+%F")-birdnet-$(date "+%H:%M:%S").wav 2>/tmp/ffmpeg_rtsp.log
+      if [ $? -ne 0 ];then
+        cat /tmp/ffmpeg_rtsp.log
+      fi
+      rm -f /tmp/ffmpeg_rtsp.log
     done
   done
 else

@@ -128,6 +128,7 @@ generate_BirdDB() {
   elif ! grep Date $my_dir/BirdDB.txt;then
     sudo -u ${USER} sed -i '1 i\Date;Time;Sci_Name;Com_Name;Confidence;Lat;Lon;Cutoff;Week;Sens;Overlap' $my_dir/BirdDB.txt
   fi
+  ln -sf $my_dir/BirdDB.txt ${my_dir}/BirdDB.txt &&
   chown $USER:$USER ${my_dir}/BirdDB.txt && chmod g+rw ${my_dir}/BirdDB.txt
 }
 
@@ -188,7 +189,7 @@ install_Caddyfile() {
   if ! [ -z ${CADDY_PWD} ];then
   HASHWORD=$(caddy hash-password -plaintext ${CADDY_PWD})
   cat << EOF > /etc/caddy/Caddyfile
-http:// ${BIRDNETPI_URL} {
+http://localhost http://$(hostname).local ${BIRDNETPI_URL} {
   root * ${EXTRACTED}
   file_server browse
   handle /By_Date/* {
@@ -224,7 +225,7 @@ http:// ${BIRDNETPI_URL} {
 EOF
   else
     cat << EOF > /etc/caddy/Caddyfile
-http:// ${BIRDNETPI_URL} {
+http://localhost http://$(hostname).local ${BIRDNETPI_URL} {
   root * ${EXTRACTED}
   file_server browse
   handle /By_Date/* {
@@ -402,12 +403,42 @@ EOF
   systemctl enable livestream.service
 }
 
-install_cleanup_cron() {
-  sed "s/\$USER/$USER/g" $my_dir/templates/cleanup.cron >> /etc/crontab
+setup_separate_service_logs() {
+  for srvfile in $(grep -il birdnet /etc/systemd/system/*.service)
+  do
+    srv=$(basename $srvfile|cut -d. -f1)
+    sed -i "/^SyslogIdentifier=/d" $srvfile
+    sed -i "/^ExecStart=/a SyslogIdentifier=${srv}" $srvfile
+    cat <<EOF >/etc/rsyslog.d/${srv}.conf
+if \$programname == '${srv}' then /var/log/birdnet/${srv}.log
+& stop
+EOF
+    echo "updated $srvfile $(grep 'SyslogIdentifier=' $srvfile)"
+    echo "wrote /etc/rsyslog.d/${srv}.conf"
+  done
+  systemctl daemon-reload
+  systemctl restart rsyslog
+  #
+  cat <<EOF >/etc/logrotate.d/birdnet
+/var/log/birdnet/*
+{
+	rotate 2
+  maxsize 10M
+	daily
+	missingok
+	notifempty
+	compress
+	delaycompress
+	sharedscripts
+	postrotate
+		su $USER -c "~${USER}/BirdNET-Pi/scripts/restart_services.sh >/tmp/birdnet-logrotate.log 2>&1"
+	endscript
+}
+EOF
 }
 
-chown_things() {
-  chown -R $USER:$USER $HOME/Bird*
+install_cleanup_cron() {
+  sed "s/\$USER/$USER/g" $my_dir/templates/cleanup.cron >> /etc/crontab
 }
 
 install_services() {
@@ -433,6 +464,7 @@ install_services() {
   install_cleanup_cron
 
   create_necessary_dirs
+  setup_separate_service_logs
   generate_BirdDB
   configure_caddy_php
   config_icecast
@@ -442,7 +474,6 @@ install_services() {
 if [ -f ${config_file} ];then
   source ${config_file}
   install_services
-  chown_things
 else
   echo "Unable to find a configuration file. Please make sure that $config_file exists."
 fi

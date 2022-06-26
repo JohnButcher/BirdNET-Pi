@@ -152,6 +152,11 @@ ${BIRDWEATHER_ID_LOG}
       ${INCLUDEPARAM} \
       ${EXCLUDEPARAM} \
       ${BIRDWEATHER_ID_PARAM}
+
+      # immediately remove files with no results
+      if [ $(wc -l ${1}/${i}.csv | awk '{print $1}') -lt 2 ];then
+         rm ${1}/${i}.csv ${1}/${i}
+      fi
   done
 }
 
