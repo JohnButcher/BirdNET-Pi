@@ -4,8 +4,19 @@
 #
 source /etc/birdnet/birdnet.conf
 srv="birdnet_recording"
+analyzing_now="."
+counter=10
 while [ 1 ];do
      sleep 61
+     if [ $counter -le 0 ];then
+        latest=$(cat ~/BirdNET-Pi/analyzing_now.txt)
+        if [ "$latest" = "$analyzing_now" ];then
+           echo "$(date) WARNING no change in analyzing_now for 10 iterations, restarting services"
+           ~/BirdNET-Pi/scripts/restart_services.sh
+        fi
+        counter=10
+        analyzing_now=$(cat ~/BirdNET-Pi/analyzing_now.txt)
+     fi
      if [ -z "${RTSP_STREAM}" ];then
         ingest_dir=${RECS_DIR}/$(date +"%B-%Y/%d-%A")
         mkdir -p $ingest_dir
@@ -26,6 +37,7 @@ while [ 1 ];do
         sudo systemctl start $srv
         echo "$(date)    INFO started $srv service"
      fi
+     ((counter-=1))
 done
 
 # End
